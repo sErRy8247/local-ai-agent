@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+conversations/
+backups/
+*.bak*
+*.pyc
+.env

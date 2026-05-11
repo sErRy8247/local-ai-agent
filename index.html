@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local AI — Qwen3</title>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    /* ── Variables ─────────────────────────────────────────── */
+    :root {
+      --bg-base:       #0d0d10;
+      --bg-surface:    #18181d;
+      --bg-elevated:   #22222a;
+      --bg-hover:      #2a2a35;
+      --border:        rgba(255,255,255,0.07);
+      --border-strong: rgba(255,255,255,0.13);
+      --text-primary:  #f0f0f4;
+      --text-secondary:#8b8b9a;
+      --text-muted:    #55556a;
+      --accent:        #4f7cff;
+      --accent-dim:    rgba(79,124,255,0.15);
+      --accent-hover:  #6690ff;
+      --user-bubble:   #2a52c9;
+      --user-text:     #e8eeff;
+      --danger:        #ff6b6b;
+      --warning:       #f59e0b;
+      --success:       #4ade80;
+      --think-color:   #c084fc;
+      --think-dim:     rgba(168,85,247,0.10);
+      --radius-sm:     6px;
+      --radius-md:     10px;
+      --radius-lg:     16px;
+      --radius-xl:     22px;
+      --font-sans:     'DM Sans', system-ui, sans-serif;
+      --font-mono:     'JetBrains Mono', monospace;
+      --sidebar-w:     240px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-base);
+      color: var(--text-primary);
+      overflow: hidden;
+    }
+    button { cursor: pointer; border: none; background: none; font-family: inherit; }
+    textarea { font-family: inherit; }
+
+    /* ── App Layout ─────────────────────────────────────────── */
+    #app { display: flex; height: 100vh; overflow: hidden; }
+
+    /* ── Sidebar ────────────────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-w);
+      min-width: var(--sidebar-w);
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow: hidden;
+      transition: margin-left 0.22s ease, opacity 0.22s ease;
+    }
+    #sidebar.hidden {
+      margin-left: calc(-1 * var(--sidebar-w));
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #sb-header {
+      height: 56px;
+      display: flex; align-items: center;
+      padding: 0 0.75rem;
+      border-bottom: 1px solid var(--border);
+      gap: 0.5rem;
+      flex-shrink: 0;
+    }
+    #sb-title { font-size: 0.85rem; font-weight: 600; flex: 1; color: var(--text-primary); }
+
+    .sb-icon-btn {
+      width: 28px; height: 28px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      transition: background 150ms, color 150ms;
+      flex-shrink: 0;
+    }
+    .sb-icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    #new-chat-btn {
+      margin: 0.6rem 0.6rem 0.4rem;
+      padding: 0.5rem 0.75rem;
+      background: var(--accent-dim);
+      border: 1px solid rgba(79,124,255,0.3);
+      border-radius: var(--radius-md);
+      color: var(--accent);
+      font-size: 0.82rem;
+      font-weight: 500;
+      display: flex; align-items: center; gap: 0.4rem;
+      transition: background 150ms;
+    }
+    #new-chat-btn:hover { background: rgba(79,124,255,0.22); }
+
+    #conv-list-wrap {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.2rem 0 1rem;
+    }
+    #conv-list-wrap::-webkit-scrollbar { width: 3px; }
+    #conv-list-wrap::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
+
+    .conv-group-label {
+      padding: 0.5rem 0.85rem 0.25rem;
+      font-size: 0.66rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .conv-item {
+      position: relative;
+      display: flex; align-items: center;
+      padding: 0.42rem 0.75rem;
+      margin: 1px 0.4rem;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: background 150ms;
+      gap: 0.4rem;
+    }
+    .conv-item:hover  { background: var(--bg-hover); }
+    .conv-item.active { background: var(--bg-elevated); }
+
+    .conv-item-title {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .conv-item.active .conv-item-title { color: var(--text-primary); }
+
+    .conv-item-del {
+      opacity: 0;
+      width: 18px; height: 18px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 3px;
+      color: var(--text-muted);
+      font-size: 11px;
+      flex-shrink: 0;
+      transition: opacity 150ms, background 150ms, color 150ms;
+    }
+    .conv-item:hover .conv-item-del { opacity: 1; }
+    .conv-item-del:hover { background: rgba(255,107,107,0.15); color: var(--danger); }
+
+    #sb-empty {
+      padding: 1.5rem 0.85rem;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    /* ── Main Area ──────────────────────────────────────────── */
+    #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    #header {
+      height: 56px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; padding: 0 1rem;
+      gap: 0.6rem; flex-shrink: 0; z-index: 10;
+    }
+    #header-left { display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 0; }
+    #model-icon  { width: 28px; height: 28px; background: var(--accent-dim); border: 1px solid rgba(79,124,255,0.3); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+    #header h1   { font-size: 0.88rem; font-weight: 600; white-space: nowrap; }
+    #model-badge { font-size: 0.7rem; font-family: var(--font-mono); color: var(--text-muted); background: var(--bg-elevated); border: 1px solid var(--border); padding: 1px 6px; border-radius: var(--radius-sm); white-space: nowrap; }
+
+    /* Status */
+    #status-area { display: flex; align-items: center; gap: 0.35rem; padding: 3px 8px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-xl); flex-shrink: 0; }
+    .s-dot       { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); transition: background 300ms, box-shadow 300ms; flex-shrink: 0; }
+    .s-dot.ok    { background: var(--success); box-shadow: 0 0 0 2px rgba(74,222,128,0.18); }
+    .s-dot.warn  { background: var(--warning); box-shadow: 0 0 0 2px rgba(245,158,11,0.18); }
+    .s-dot.err   { background: var(--danger);  box-shadow: 0 0 0 2px rgba(255,107,107,0.18); }
+    .s-dot.busy  { background: var(--accent);  box-shadow: 0 0 0 2px rgba(79,124,255,0.18); animation: dot-pulse 1.5s infinite; }
+    @keyframes dot-pulse { 0%,100% { opacity:.6; } 50% { opacity:1; } }
+    .s-divider   { width: 1px; height: 10px; background: var(--border-strong); margin: 0 1px; }
+    .s-label     { font-size: 0.68rem; color: var(--text-muted); white-space: nowrap; }
+    #status-text { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; min-width: 60px; }
+
+    /* Header buttons */
+    #header-actions { display: flex; align-items: center; gap: 0.25rem; }
+    .header-btn { height: 28px; padding: 0 0.55rem; display: flex; align-items: center; gap: 4px; border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 0.73rem; transition: background 150ms, color 150ms; white-space: nowrap; }
+    .header-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .header-btn.think-on { color: var(--think-color); background: var(--think-dim); border: 1px solid rgba(168,85,247,0.25); }
+    .header-btn.think-on:hover { background: rgba(168,85,247,0.18); }
+
+    /* ── Gen Status Banner ───────────────────────────────────── */
+    #gen-banner {
+      display: none;
+      position: sticky; bottom: 0;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border);
+      padding: 0.5rem 1.25rem;
+      flex-shrink: 0; z-index: 5;
+      align-items: center; gap: 0.6rem;
+      font-size: 0.77rem;
+    }
+    #gen-banner.visible { display: flex; }
+    .gen-spinner { width: 13px; height: 13px; flex-shrink: 0; border: 1.5px solid rgba(192,132,252,0.25); border-top-color: var(--think-color); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .gen-spinner.answer { border-color: rgba(79,124,255,0.25); border-top-color: var(--accent); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #gen-phase-text { color: var(--text-secondary); }
+    #gen-phase-text.answer { color: var(--accent); }
+    #gen-stats { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); margin-left: auto; }
+    #gen-progress-bar { position: absolute; bottom: 0; left: 0; height: 2px; width: 0%; background: linear-gradient(90deg, var(--think-color), var(--accent)); border-radius: 99px; transition: width 0.5s ease; }
+    #gen-timeout-warn { display: none; font-size: 0.7rem; color: var(--warning); padding: 1px 7px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); border-radius: var(--radius-sm); white-space: nowrap; }
+    #gen-timeout-warn.visible { display: block; }
+
+    /* ── Chat ───────────────────────────────────────────────── */
+    #chat-wrap { flex: 1; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth; }
+    #chat-wrap::-webkit-scrollbar { width: 4px; }
+    #chat-wrap::-webkit-scrollbar-track { background: transparent; }
+    #chat-wrap::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
+    #chat { max-width: 760px; margin: 0 auto; padding: 1.5rem 1.25rem 1rem; display: flex; flex-direction: column; gap: 1.25rem; }
+
+    /* Welcome */
+    #welcome { display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 3rem 1rem; text-align: center; animation: fadeUp 0.5s ease both; }
+    #welcome .w-icon { width: 52px; height: 52px; background: var(--accent-dim); border: 1px solid rgba(79,124,255,0.3); border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center; font-size: 22px; }
+    #welcome h2 { font-size: 1.1rem; font-weight: 600; }
+    #welcome p  { font-size: 0.85rem; color: var(--text-secondary); max-width: 300px; line-height: 1.6; }
+    .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin-top: 0.5rem; }
+    .chip  { font-size: 0.78rem; padding: 0.35rem 0.8rem; background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-xl); color: var(--text-secondary); cursor: pointer; transition: border-color 150ms, color 150ms; }
+    .chip:hover { border-color: var(--accent); color: var(--text-primary); }
+
+    /* Messages */
+    .msg-wrapper { display: flex; flex-direction: column; animation: fadeUp 0.25s ease both; }
+    .msg-wrapper.user { align-items: flex-end; }
+    .msg-wrapper.ai   { align-items: flex-start; }
+    .msg-meta { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; display: flex; align-items: center; gap: 0.35rem; padding: 0 3px; flex-wrap: wrap; }
+    .msg-meta .sender { font-weight: 500; color: var(--text-secondary); }
+    .msg { max-width: min(78%, 620px); padding: 0.7rem 1rem; border-radius: var(--radius-lg); line-height: 1.7; font-size: 0.9rem; word-break: break-word; }
+    .msg.user { background: var(--user-bubble); color: var(--user-text); border-radius: var(--radius-lg) var(--radius-lg) 4px var(--radius-lg); }
+    .msg.ai   { background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: 4px var(--radius-lg) var(--radius-lg) var(--radius-lg); }
+
+    /* AI markdown */
+    .msg.ai p { margin: 0.4rem 0; } .msg.ai p:first-child { margin-top: 0; } .msg.ai p:last-child { margin-bottom: 0; }
+    .msg.ai h1,.msg.ai h2,.msg.ai h3 { font-weight: 600; margin: 1rem 0 0.4rem; line-height: 1.35; }
+    .msg.ai h1 { font-size: 1.1em; } .msg.ai h2 { font-size: 1em; } .msg.ai h3 { font-size: 0.95em; }
+    .msg.ai ul,.msg.ai ol { padding-left: 1.4rem; margin: 0.4rem 0; }
+    .msg.ai li { margin: 0.2rem 0; }
+    .msg.ai a  { color: var(--accent); text-decoration: underline; text-decoration-color: rgba(79,124,255,0.4); }
+    .msg.ai blockquote { border-left: 3px solid var(--accent); padding-left: 0.85rem; margin: 0.5rem 0; color: var(--text-secondary); }
+    .msg.ai table { border-collapse: collapse; width: 100%; font-size: 0.85em; margin: 0.5rem 0; }
+    .msg.ai th,.msg.ai td { border: 1px solid var(--border-strong); padding: 0.4rem 0.6rem; text-align: left; }
+    .msg.ai th { background: var(--bg-elevated); font-weight: 500; }
+    .msg.ai tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+    .msg.ai hr { border: none; border-top: 1px solid var(--border); margin: 0.75rem 0; }
+    .msg.ai :not(pre) > code { font-family: var(--font-mono); font-size: 0.82em; background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 1px 5px; color: #a78bfa; }
+
+    /* Code blocks */
+    .code-block-wrap { position: relative; margin: 0.6rem 0; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-strong); }
+    .code-block-header { display: flex; align-items: center; justify-content: space-between; background: #161b22; padding: 0.3rem 0.7rem; border-bottom: 1px solid var(--border); }
+    .code-lang { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); }
+    .copy-btn  { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: var(--text-muted); padding: 2px 5px; border-radius: var(--radius-sm); transition: color 150ms, background 150ms; }
+    .copy-btn:hover  { color: var(--text-primary); background: rgba(255,255,255,0.07); }
+    .copy-btn.copied { color: var(--success); }
+    .code-block-wrap pre { margin: 0 !important; border-radius: 0 !important; font-family: var(--font-mono) !important; font-size: 0.82rem !important; line-height: 1.6 !important; max-height: 420px; overflow: auto; }
+
+    /* Think blocks */
+    .think-block { border: 1px solid rgba(168,85,247,0.2); border-radius: var(--radius-md); overflow: hidden; margin-bottom: 0.75rem; }
+    .think-header { display: flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.7rem; background: rgba(168,85,247,0.07); cursor: pointer; user-select: none; font-size: 0.77rem; color: var(--think-color); transition: background 150ms; }
+    .think-header:hover { background: rgba(168,85,247,0.13); }
+    .think-arrow { transition: transform 0.2s; font-size: 10px; }
+    .think-block.open .think-arrow { transform: rotate(90deg); }
+    .think-content { display: none; padding: 0.5rem 0.7rem; font-size: 0.78rem; color: var(--text-secondary); line-height: 1.65; border-top: 1px solid rgba(168,85,247,0.15); white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); background: rgba(168,85,247,0.03); max-height: 300px; overflow-y: auto; }
+    .think-block.open .think-content { display: block; }
+
+    /* Typing indicator */
+    .typing { display: inline-flex; gap: 4px; align-items: center; height: 18px; }
+    .typing span { width: 5px; height: 5px; background: var(--text-muted); border-radius: 50%; animation: bounce 1.2s infinite ease-in-out; }
+    .typing span:nth-child(2) { animation-delay: 0.2s; }
+    .typing span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce { 0%,80%,100% { transform: translateY(0); opacity: .4; } 40% { transform: translateY(-4px); opacity: 1; } }
+
+    /* Stream cursor */
+    .stream-cursor::after { content: '▋'; display: inline; color: var(--accent); animation: blink 0.8s step-end infinite; font-size: 0.85em; }
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+    /* ── Input ──────────────────────────────────────────────── */
+    #input-area  { background: var(--bg-surface); border-top: 1px solid var(--border); padding: 0.8rem 1.25rem; flex-shrink: 0; }
+    #input-inner { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 0.4rem; }
+    #input-row   { display: flex; align-items: flex-end; gap: 0.5rem; background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); padding: 0.5rem 0.6rem 0.5rem 0.9rem; transition: border-color 150ms; }
+    #input-row:focus-within { border-color: rgba(79,124,255,0.5); }
+    #input { flex: 1; background: none; border: none; outline: none; resize: none; color: var(--text-primary); font-size: 0.9rem; line-height: 1.6; max-height: 180px; overflow-y: auto; min-height: 24px; }
+    #input::placeholder { color: var(--text-muted); }
+    #send { width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 150ms, transform 150ms; }
+    #send:hover   { background: var(--accent-hover); }
+    #send:active  { transform: scale(0.94); }
+    #send:disabled { background: var(--bg-hover); opacity: 0.5; cursor: not-allowed; transform: none; }
+    #input-footer { display: flex; justify-content: space-between; align-items: center; padding: 0 3px; }
+    #char-count  { font-size: 0.7rem; color: var(--text-muted); }
+    #input-hint  { font-size: 0.7rem; color: var(--text-muted); }
+
+    /* Save indicator */
+    #save-indicator {
+      font-size: 0.68rem; color: var(--text-muted);
+      display: flex; align-items: center; gap: 4px;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    #save-indicator.visible { opacity: 1; }
+    #save-indicator.saved { color: var(--success); }
+
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Toast */
+    #toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(10px); background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-md); padding: 0.45rem 0.9rem; font-size: 0.78rem; pointer-events: none; opacity: 0; transition: opacity 0.2s, transform 0.2s; z-index: 999; }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      :root { --sidebar-w: 220px; }
+      #model-badge, .s-label { display: none; }
+      .msg { max-width: 92%; }
+      #chat { padding: 1rem 0.75rem 1rem; }
+      #input-area { padding: 0.7rem; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Sidebar ─────────────────────────────────────────── -->
+  <div id="sidebar">
+    <div id="sb-header">
+      <span id="sb-title">✦ Local AI</span>
+      <!-- 사이드바 닫기 -->
+      <button class="sb-icon-btn" id="sb-close-btn" title="사이드바 닫기">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- 새 대화 버튼 -->
+    <button id="new-chat-btn" onclick="startNewChat()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      새 대화
+    </button>
+
+    <!-- 대화 목록 -->
+    <div id="conv-list-wrap">
+      <div id="conv-list"></div>
+    </div>
+  </div>
+
+  <!-- ── Main ───────────────────────────────────────────── -->
+  <div id="main">
+
+    <!-- Header -->
+    <div id="header">
+      <div id="header-left">
+        <!-- 사이드바 열기 (햄버거) -->
+        <button class="sb-icon-btn" id="sb-open-btn" title="대화 내역">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+        <div id="model-icon">✦</div>
+        <h1>Local AI</h1>
+        <span id="model-badge">qwen3.6-35b · AGENT.md</span>
+      </div>
+
+      <!-- 상태 표시 -->
+      <div id="status-area">
+        <div class="s-dot" id="dot-api"></div>
+        <span class="s-label">API</span>
+        <div class="s-divider"></div>
+        <div class="s-dot" id="dot-lm"></div>
+        <span class="s-label">LM</span>
+        <div class="s-divider"></div>
+        <span id="status-text">확인 중…</span>
+      </div>
+
+      <div id="header-actions">
+        <!-- Think/Fast 토글 -->
+        <button class="header-btn think-on" id="think-btn" onclick="toggleThinkMode()" title="Thinking / Fast 모드 전환">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18h6M10 22h4M12 2a7 7 0 0 1 7 7c0 2.5-1.3 4.7-3.3 6L12 17l-3.7-2C6.3 13.7 5 11.5 5 9a7 7 0 0 1 7-7z"/>
+          </svg>
+          <span id="think-label">Think</span>
+        </button>
+        <!-- 새 대화 (헤더) -->
+        <button class="header-btn" id="header-new-btn" onclick="startNewChat()" title="새 대화 시작">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          새 대화
+        </button>
+      </div>
+    </div>
+
+    <!-- Chat -->
+    <div id="chat-wrap">
+      <div id="chat">
+        <div id="welcome">
+          <div class="w-icon">✦</div>
+          <h2>무엇이든 물어보세요</h2>
+          <p>Qwen3 35B · AGENT.md 하네스<br>완전 로컬 실행 — 데이터 외부 전송 없음</p>
+          <div class="chips">
+            <span class="chip" data-prompt="/no_think 파이썬 퀵소트 구현해줘">⚡ 코드 (Fast)</span>
+            <span class="chip" data-prompt="/think 트랜스포머 어텐션 메커니즘을 수식과 함께 설명해줘">🧠 추론 (Think)</span>
+            <span class="chip" data-prompt="/no_think Arch Linux systemd 유닛 파일 기본 구조">⚡ 시스템 (Fast)</span>
+            <span class="chip" data-prompt="/no_think What can you do?">⚡ English (Fast)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gen Banner -->
+    <div id="gen-banner">
+      <div class="gen-spinner" id="gen-spinner"></div>
+      <span id="gen-phase-text">생각 중…</span>
+      <div id="gen-timeout-warn">⚠ 지연 중 — Fast 모드를 권장합니다</div>
+      <span id="gen-stats">0 토큰 · 0초</span>
+      <div id="gen-progress-bar"></div>
+    </div>
+
+    <!-- Input -->
+    <div id="input-area">
+      <div id="input-inner">
+        <div id="input-row">
+          <textarea id="input" placeholder="메시지를 입력하세요…" rows="1" autocomplete="off" spellcheck="false"></textarea>
+          <button id="send">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
+        <div id="input-footer">
+          <span id="char-count"></span>
+          <div style="display:flex; align-items:center; gap:0.75rem;">
+            <span id="save-indicator">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              저장됨
+            </span>
+            <span id="input-hint">Enter 전송 · Shift+Enter 줄바꿈</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div><!-- #main -->
+</div><!-- #app -->
+
+<div id="toast"></div>
+
+<script>
+  // ── 요소 참조 ──────────────────────────────────────────────
+  const chatEl      = document.getElementById('chat');
+  const chatWrap    = document.getElementById('chat-wrap');
+  const inputEl     = document.getElementById('input');
+  const sendBtn     = document.getElementById('send');
+  const charCount   = document.getElementById('char-count');
+  const welcome     = document.getElementById('welcome');
+  const toast       = document.getElementById('toast');
+  const dotApi      = document.getElementById('dot-api');
+  const dotLm       = document.getElementById('dot-lm');
+  const statusTxt   = document.getElementById('status-text');
+  const genBanner   = document.getElementById('gen-banner');
+  const genSpinner  = document.getElementById('gen-spinner');
+  const genPhase    = document.getElementById('gen-phase-text');
+  const genStats    = document.getElementById('gen-stats');
+  const genBar      = document.getElementById('gen-progress-bar');
+  const genWarn     = document.getElementById('gen-timeout-warn');
+  const saveInd     = document.getElementById('save-indicator');
+  const sidebar     = document.getElementById('sidebar');
+
+  // ── 상태 변수 ──────────────────────────────────────────────
+  let history         = [];
+  let displayMessages = [];  // UI 표시용 메시지 배열
+  let isStreaming     = false;
+  let thinkMode       = true;
+  let currentConvId   = null;   // 현재 대화 ID (null = 미저장 새 대화)
+  let currentTitle    = '';
+
+  // ── Marked 렌더러 ──────────────────────────────────────────
+  marked.setOptions({ breaks: true, gfm: true });
+  const renderer = new marked.Renderer();
+  renderer.code  = (code, lang) => {
+    const sl = (lang || 'text').trim().toLowerCase();
+    const id = 'cb-' + Math.random().toString(36).slice(2, 8);
+    let hi;
+    try { hi = sl && hljs.getLanguage(sl) ? hljs.highlight(code, { language: sl }).value : hljs.highlightAuto(code).value; }
+    catch { hi = code.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    return `<div class="code-block-wrap">
+      <div class="code-block-header">
+        <span class="code-lang">${sl}</span>
+        <button class="copy-btn" onclick="copyCode(this,'${id}')">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          복사
+        </button>
+      </div>
+      <pre><code id="${id}" class="hljs language-${sl}">${hi}</code></pre>
+    </div>`;
+  };
+  marked.use({ renderer });
+
+  window.copyCode = (btn, id) => {
+    navigator.clipboard.writeText(document.getElementById(id)?.innerText || '').then(() => {
+      btn.classList.add('copied');
+      btn.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> 복사됨`;
+      setTimeout(() => { btn.classList.remove('copied'); btn.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> 복사`; }, 2000);
+    });
+  };
+
+  const showToast = (msg, d = 2400) => { toast.textContent = msg; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), d); };
+
+  // ── 헬스체크 ─────────────────────────────────────────────
+  async function checkStatus() {
+    if (isStreaming) return;
+    try {
+      const r = await fetch('/health', { signal: AbortSignal.timeout(3000) });
+      if (!r.ok) throw new Error();
+      const d = await r.json();
+      dotApi.className = 's-dot ok';
+      if (d.lm_studio) { dotLm.className = 's-dot ok'; statusTxt.textContent = '모두 연결됨'; statusTxt.style.color = ''; }
+      else              { dotLm.className = 's-dot warn'; statusTxt.textContent = 'LM 오프라인'; statusTxt.style.color = 'var(--warning)'; }
+    } catch {
+      dotApi.className = 's-dot err'; dotLm.className = 's-dot err';
+      statusTxt.textContent = '오프라인'; statusTxt.style.color = 'var(--danger)';
+    }
+  }
+  checkStatus();
+  setInterval(checkStatus, 30000);
+
+  // ── Gen Banner ────────────────────────────────────────────
+  let _genTimer = null, _genTimeout = null, _genStart = 0, _tokenCount = 0, _barW = 0;
+
+  function bannerShow(phase) {
+    _genStart = Date.now(); _tokenCount = 0; _barW = 0;
+    genWarn.classList.remove('visible');
+    genBanner.classList.add('visible');
+    bannerPhase(phase);
+    _genTimer = setInterval(() => {
+      const sec = Math.floor((Date.now() - _genStart) / 1000);
+      genStats.textContent = `${_tokenCount} 토큰 · ${sec}초`;
+      _barW = Math.min(92, _barW + (sec < 10 ? 2.5 : sec < 30 ? 0.8 : 0.2));
+      genBar.style.width = _barW + '%';
+    }, 1000);
+    _genTimeout = setTimeout(() => genWarn.classList.add('visible'), 20000);
+    dotApi.className = 's-dot busy'; dotLm.className = 's-dot busy';
+    statusTxt.textContent = '생성 중'; statusTxt.style.color = 'var(--accent)';
+  }
+
+  function bannerPhase(phase) {
+    if (phase === 'thinking') {
+      genSpinner.className = 'gen-spinner'; genPhase.className = ''; genPhase.textContent = '🧠 추론 중…';
+    } else {
+      genSpinner.className = 'gen-spinner answer'; genPhase.className = 'answer'; genPhase.textContent = '✍ 답변 작성 중…';
+      genWarn.classList.remove('visible'); genBar.style.width = '96%';
+    }
+  }
+
+  function bannerHide() {
+    clearInterval(_genTimer); clearTimeout(_genTimeout);
+    genBanner.classList.remove('visible'); genBar.style.width = '0%';
+  }
+
+  // ── Think 블록 파서 ──────────────────────────────────────
+  // <think>/<thinking> 두 태그 모두 지원 (indexOf 기반 O(n))
+  function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function replaceCompleteThinkBlocks(text) {
+    const PAIRS = [
+      { open: '<think>',    close: '</think>',    oLen: 7,  cLen: 8  },
+      { open: '<thinking>', close: '</thinking>', oLen: 9,  cLen: 10 },
+    ];
+    let result = '', remaining = text;
+    while (remaining.length > 0) {
+      let earliest = -1, matched = null;
+      for (const p of PAIRS) {
+        const pos = remaining.toLowerCase().indexOf(p.open);
+        if (pos !== -1 && (earliest === -1 || pos < earliest)) { earliest = pos; matched = p; }
+      }
+      if (earliest === -1) { result += remaining; break; }
+      result += remaining.slice(0, earliest);
+      const from = earliest + matched.oLen;
+      const closeIdx = remaining.toLowerCase().indexOf(matched.close, from);
+      if (closeIdx === -1) break;
+      const inner = remaining.slice(from, closeIdx);
+      const id = 'tk-' + Math.random().toString(36).slice(2, 7);
+      result += `<div class="think-block" id="${id}">
+        <div class="think-header" onclick="toggleThink('${id}')">
+          <span class="think-arrow">▶</span>
+          <span>추론 과정 — ${inner.trim().split(/\s+/).length.toLocaleString()} 단어</span>
+        </div>
+        <div class="think-content">${escapeHtml(inner.trim())}</div>
+      </div>`;
+      remaining = remaining.slice(closeIdx + matched.cLen);
+    }
+    return result;
+  }
+
+  function stripIncompleteThink(text) {
+    let out = replaceCompleteThinkBlocks(text);
+    for (const tag of ['<think>', '<thinking>']) {
+      const idx = out.toLowerCase().indexOf(tag);
+      if (idx !== -1) { out = out.slice(0, idx); break; }
+    }
+    return out;
+  }
+
+  window.toggleThink = id => document.getElementById(id)?.classList.toggle('open');
+
+  // ── 마크다운 렌더 ─────────────────────────────────────────
+  function safeRender(bubble, raw, streaming) {
+    try {
+      const processed = streaming ? stripIncompleteThink(raw) : replaceCompleteThinkBlocks(raw);
+      const ph = '\x00BLK\x00'; const blocks = [];
+      let safe = processed.replace(/<div class="think-block[\s\S]*?<\/div>\s*<\/div>/g, m => { blocks.push(m); return ph + (blocks.length-1) + ph; });
+      let html = marked.parse(safe);
+      html = html.replace(new RegExp(`${ph}(\\d+)${ph}`, 'g'), (_, i) => blocks[+i]);
+      bubble.innerHTML = html;
+    } catch (err) {
+      console.warn('[render fallback]', err);
+      bubble.textContent = raw;
+    }
+    if (streaming) bubble.classList.add('stream-cursor');
+    else           bubble.classList.remove('stream-cursor');
+    chatWrap.scrollTop = chatWrap.scrollHeight;
+  }
+
+  // ── 메시지 추가 ──────────────────────────────────────────
+  function addMessage(role) {
+    if (welcome.style.display !== 'none') welcome.style.display = 'none';
+    const now = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    const wrapper = document.createElement('div');
+    wrapper.className = `msg-wrapper ${role}`;
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta';
+    meta.innerHTML = `<span class="sender">${role === 'user' ? '나' : 'AI'}</span><span>${now}</span>`;
+    wrapper.appendChild(meta);
+    const bubble = document.createElement('div');
+    bubble.className = `msg ${role}`;
+    wrapper.appendChild(bubble);
+    chatEl.appendChild(wrapper);
+    chatWrap.scrollTop = chatWrap.scrollHeight;
+    return { bubble, meta, time: now };
+  }
+
+  // ── 모드 태그 삽입 ────────────────────────────────────────
+  function insertModeTag(metaEl, sentThinkMode, fullText) {
+    const lower = fullText.toLowerCase();
+    const hasThinkBlock =
+      (lower.includes('<think>') && lower.includes('</think>')) ||
+      (lower.includes('<thinking>') && lower.includes('</thinking>'));
+    const isThink = sentThinkMode || hasThinkBlock;
+
+    const tag = document.createElement('span');
+    tag.style.cssText = isThink
+      ? 'font-size:0.66rem; color:var(--think-color); background:var(--think-dim); padding:1px 5px; border-radius:4px; border:1px solid rgba(168,85,247,0.25);'
+      : 'font-size:0.66rem; color:var(--accent); background:var(--accent-dim); padding:1px 5px; border-radius:4px; border:1px solid rgba(79,124,255,0.25);';
+    tag.textContent = isThink ? '🧠 Think' : '⚡ Fast';
+    metaEl.appendChild(tag);
+    return isThink;
+  }
+
+  // ── 불러온 메시지 렌더 ────────────────────────────────────
+  function renderLoadedMessage(msg) {
+    if (welcome.style.display !== 'none') welcome.style.display = 'none';
+    const wrapper = document.createElement('div');
+    wrapper.className = `msg-wrapper ${msg.role === 'ai' ? 'ai' : 'user'}`;
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta';
+    meta.innerHTML = `<span class="sender">${msg.role === 'user' ? '나' : 'AI'}</span><span>${msg.time}</span>`;
+    if (msg.role === 'ai') {
+      const tag = document.createElement('span');
+      tag.style.cssText = msg.think
+        ? 'font-size:0.66rem; color:var(--think-color); background:var(--think-dim); padding:1px 5px; border-radius:4px; border:1px solid rgba(168,85,247,0.25);'
+        : 'font-size:0.66rem; color:var(--accent); background:var(--accent-dim); padding:1px 5px; border-radius:4px; border:1px solid rgba(79,124,255,0.25);';
+      tag.textContent = msg.think ? '🧠 Think' : '⚡ Fast';
+      meta.appendChild(tag);
+    }
+    wrapper.appendChild(meta);
+    const bubble = document.createElement('div');
+    bubble.className = `msg ${msg.role === 'ai' ? 'ai' : 'user'}`;
+    if (msg.role === 'ai') safeRender(bubble, msg.text, false);
+    else bubble.textContent = msg.text;
+    wrapper.appendChild(bubble);
+    chatEl.appendChild(wrapper);
+    chatWrap.scrollTop = chatWrap.scrollHeight;
+  }
+
+  // ── Think/Fast 토글 ───────────────────────────────────────
+  function toggleThinkMode() {
+    thinkMode = !thinkMode;
+    const btn = document.getElementById('think-btn');
+    const lbl = document.getElementById('think-label');
+    if (thinkMode) { btn.classList.add('think-on'); lbl.textContent = 'Think'; showToast('🧠 Think 모드 활성화'); }
+    else           { btn.classList.remove('think-on'); lbl.textContent = 'Fast'; showToast('⚡ Fast 모드 활성화'); }
+  }
+
+  // ── 사이드바 토글 ─────────────────────────────────────────
+  document.getElementById('sb-close-btn').addEventListener('click', () => sidebar.classList.add('hidden'));
+  document.getElementById('sb-open-btn').addEventListener('click', () => sidebar.classList.remove('hidden'));
+
+  // ── 대화 목록 렌더 ────────────────────────────────────────
+  function renderConvList(conversations) {
+    const list = document.getElementById('conv-list');
+    list.innerHTML = '';
+
+    if (!conversations || conversations.length === 0) {
+      list.innerHTML = '<div id="sb-empty">대화 내역이 없습니다.<br>메시지를 보내면 자동 저장됩니다.</div>';
+      return;
+    }
+
+    const now = Date.now() / 1000;
+    const groups = [
+      { label: '오늘',    items: [], test: (mt) => now - mt < 86400 },
+      { label: '어제',    items: [], test: (mt) => now - mt < 172800 },
+      { label: '이번 주', items: [], test: (mt) => now - mt < 604800 },
+      { label: '이전',    items: [], test: ()   => true },
+    ];
+
+    for (const conv of conversations) {
+      for (const g of groups) {
+        if (g.test(conv.mtime)) { g.items.push(conv); break; }
+      }
+    }
+
+    for (const g of groups) {
+      if (g.items.length === 0) continue;
+      const label = document.createElement('div');
+      label.className = 'conv-group-label';
+      label.textContent = g.label;
+      list.appendChild(label);
+
+      for (const conv of g.items) {
+        const item = document.createElement('div');
+        item.className = 'conv-item' + (conv.id === currentConvId ? ' active' : '');
+        item.dataset.id = conv.id;
+        item.innerHTML = `
+          <span class="conv-item-title">${conv.title}</span>
+          <button class="conv-item-del" title="삭제"
+            onclick="deleteConv(event,'${conv.id}')">✕</button>`;
+        item.addEventListener('click', () => loadConv(conv.id));
+        list.appendChild(item);
+      }
+    }
+  }
+
+  async function refreshConvList() {
+    try {
+      const r = await fetch('/conversations');
+      const d = await r.json();
+      renderConvList(d.conversations);
+    } catch (e) {
+      console.error('conv list fetch failed', e);
+    }
+  }
+
+  // ── 대화 불러오기 ─────────────────────────────────────────
+  async function loadConv(convId) {
+    try {
+      const r = await fetch(`/conversations/${convId}`);
+      if (!r.ok) return;
+      const d = await r.json();
+
+      history         = d.messages || [];
+      displayMessages = d.display  || [];
+      currentConvId   = d.id;
+      currentTitle    = d.title;
+
+      // 채팅 영역 초기화 후 메시지 재렌더
+      chatEl.innerHTML = '';
+      if (displayMessages.length > 0) {
+        welcome.style.display = 'none';
+        for (const msg of displayMessages) renderLoadedMessage(msg);
+      } else {
+        chatEl.appendChild(welcome);
+        welcome.style.display = 'flex';
+      }
+
+      // 사이드바 활성 표시
+      document.querySelectorAll('.conv-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.id === convId);
+      });
+
+      chatWrap.scrollTop = chatWrap.scrollHeight;
+    } catch (e) {
+      showToast('대화를 불러오지 못했습니다.');
+      console.error(e);
+    }
+  }
+
+  // ── 대화 삭제 ─────────────────────────────────────────────
+  async function deleteConv(e, convId) {
+    e.stopPropagation();
+    if (!confirm('이 대화를 삭제하시겠습니까?')) return;
+    try {
+      await fetch(`/conversations/${convId}`, { method: 'DELETE' });
+      if (convId === currentConvId) startNewChat(true); // 현재 대화 삭제 시 새 대화로
+      else await refreshConvList();
+      showToast('삭제되었습니다.');
+    } catch (e) {
+      showToast('삭제 실패');
+    }
+  }
+
+  // ── 자동 저장 ─────────────────────────────────────────────
+  async function autoSave() {
+    if (history.length < 2) return; // user + assistant 최소 1쌍 필요
+
+    if (!currentConvId) {
+      // 새 대화: ID와 제목 생성
+      currentConvId = 'conv_' + Date.now();
+      const firstUser = history.find(m => m.role === 'user');
+      currentTitle = (firstUser?.content || '새 대화')
+        .replace(/^\/(?:think|no_think)\s*/i, '') // /think 접두어 제거
+        .slice(0, 36);
+      if (currentTitle.length === 36) currentTitle += '…';
+    }
+
+    try {
+      await fetch('/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id:       currentConvId,
+          title:    currentTitle,
+          messages: history,
+          display:  displayMessages,
+        }),
+      });
+
+      // 저장 표시
+      saveInd.className = 'visible saved';
+      setTimeout(() => saveInd.className = '', 2500);
+
+      await refreshConvList();
+    } catch (e) {
+      console.error('auto-save failed', e);
+    }
+  }
+
+  // ── 새 대화 시작 ──────────────────────────────────────────
+  function startNewChat(force = false) {
+    if (isStreaming) { showToast('응답 중에는 새 대화를 시작할 수 없습니다.'); return; }
+    if (!force && history.length === 0) return; // 이미 빈 대화
+
+    history         = [];
+    displayMessages = [];
+    currentConvId   = null;
+    currentTitle    = '';
+
+    chatEl.innerHTML = '';
+    chatEl.appendChild(welcome);
+    welcome.style.display = 'flex';
+
+    document.querySelectorAll('.conv-item').forEach(el => el.classList.remove('active'));
+    inputEl.focus();
+  }
+
+  // ── 입력 이벤트 ───────────────────────────────────────────
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 180) + 'px';
+    charCount.textContent = inputEl.value.length > 0 ? `${inputEl.value.length}자` : '';
+  });
+  inputEl.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+  document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
+    inputEl.value = c.dataset.prompt;
+    inputEl.dispatchEvent(new Event('input'));
+    sendMessage();
+  }));
+
+  // ── 메시지 전송 ───────────────────────────────────────────
+  async function sendMessage() {
+    const text = inputEl.value.trim();
+    if (!text || isStreaming) return;
+
+    inputEl.value = ''; inputEl.style.height = 'auto'; charCount.textContent = '';
+    sendBtn.disabled = true; isStreaming = true;
+
+    // 전송 시점 모드 고정
+    const sentThinkMode = thinkMode;
+
+    // 유저 메시지 표시
+    const { bubble: userBubble, time: userTime } = addMessage('user');
+    userBubble.textContent = text;
+    history.push({ role: 'user', content: text });
+    displayMessages.push({ role: 'user', text: text, time: userTime, think: false });
+
+    // AI 버블
+    const { bubble: aiBubble, meta: aiMeta, time: aiTime } = addMessage('ai');
+    aiBubble.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+
+    let fullText = '', tokenCount = 0, firstToken = false;
+    const RENDER_EVERY = 15;
+
+    try {
+      const res = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history, enable_thinking: sentThinkMode }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const lines = decoder.decode(value, { stream: true }).split('\n');
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let content;
+          try { ({ content } = JSON.parse(line.slice(6))); } catch { continue; }
+          if (!content) continue;
+
+          if (!firstToken) {
+            firstToken = true;
+            aiBubble.innerHTML = '';
+            bannerShow(sentThinkMode ? 'thinking' : 'answering');
+          }
+
+          fullText += content;
+          tokenCount++;
+          _tokenCount = tokenCount;
+
+          const lower = content.toLowerCase();
+          if (lower.includes('<think>') || lower.includes('<thinking>'))  bannerPhase('thinking');
+          if (lower.includes('</think>') || lower.includes('</thinking>')) bannerPhase('answering');
+
+          if (tokenCount % RENDER_EVERY === 0) safeRender(aiBubble, fullText, true);
+        }
+      }
+
+      // 완료
+      bannerHide();
+      safeRender(aiBubble, fullText, false);
+
+      const isThink = insertModeTag(aiMeta, sentThinkMode, fullText);
+
+      // 히스토리에 think 블록 제거 버전 저장 (컨텍스트 오염 방지)
+      const cleanedContent = fullText
+        .replace(/<think>[\s\S]*?<\/think>/gi, '')
+        .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+        .replace(/<think>[\s\S]*$/gi, '')
+        .replace(/<thinking>[\s\S]*$/gi, '')
+        .trim();
+      history.push({ role: 'assistant', content: cleanedContent });
+      displayMessages.push({ role: 'ai', text: fullText, time: aiTime, think: isThink });
+
+      // 자동 저장
+      autoSave();
+
+    } catch (err) {
+      console.error('[sendMessage error]', err);
+      bannerHide();
+      aiBubble.classList.remove('stream-cursor');
+      if (fullText) {
+        safeRender(aiBubble, fullText + '\n\n---\n⚠ 스트림이 중단되었습니다.', false);
+        const cleanedContent = fullText.replace(/<think(?:ing)?>[\s\S]*$/gi, '').trim();
+        history.push({ role: 'assistant', content: cleanedContent });
+        displayMessages.push({ role: 'ai', text: fullText, time: aiTime, think: sentThinkMode });
+        insertModeTag(aiMeta, sentThinkMode, fullText);
+        autoSave();
+      } else {
+        aiBubble.innerHTML = `<span style="color:var(--danger)">⚠ 오류: ${err.message}</span>`;
+      }
+    }
+
+    sendBtn.disabled = false;
+    isStreaming = false;
+    checkStatus();
+    inputEl.focus();
+  }
+
+  sendBtn.addEventListener('click', sendMessage);
+
+  // ── 초기 로딩: 대화 목록 ──────────────────────────────────
+  refreshConvList();
+</script>
+</body>
+</html>
